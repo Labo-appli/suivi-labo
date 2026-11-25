@@ -1223,7 +1223,7 @@ async function importHist(){
   let raw; try{ raw=await readTable(file); }catch(e){ importMsg.className="msg err"; importMsg.textContent=e.message; return; }
   const rows=raw.map(o=>({annee:+pick(o,"annee"),mois:pick(o,"mois")!==""?+pick(o,"mois"):null,categorie:String(pick(o,"categorie")||"TOTAL").trim()||"TOTAL",
     valeur:+String(pick(o,"valeur","total","quantite")).replace(/\s/g,"").replace(",","."),note:String(pick(o,"note")).trim()||null})).filter(r=>r.annee&&!isNaN(r.valeur));
-  if(!rows.length){ importMsg.className="msg err"; importMsg.textContent="Aucune ligne valide."; return; }
+  if(!rows.length){ importMsg.className="msg err"; importMsg.textContent=raw.some(o=>pick(o,"date")!==""&&pick(o,"activite")!=="")?"Ce fichier contient des données détaillées (Date, Activité…). Importez-le dans « Importer des données détaillées », plus haut sur cette page.":"Aucune ligne valide. Colonnes attendues : annee, mois, categorie, valeur."; histFile.value=""; return; }
   if(!confirm(`Remplacer tous les totaux sans détail par ${rows.length} lignes ?`)) return;
   try{ await api.replaceAll("historique",rows); await refresh(); importMsg.className="msg ok"; importMsg.textContent=`${rows.length} lignes importées.`; }
   catch(e){ importMsg.className="msg err"; importMsg.textContent="Erreur : "+e.message; }
