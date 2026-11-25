@@ -188,6 +188,8 @@ table.sg td.zero{color:#c3cbc8}
 .printhead{display:none;align-items:center;gap:14px;margin-bottom:10px}
 .printhead img{height:26px}
 .printhead span{color:var(--text2);font-size:12px}
+.ytog{border:1px solid var(--border-strong);background:#fff;border-radius:16px;padding:4px 11px;font-size:12.5px;cursor:pointer;color:var(--text);display:inline-flex;align-items:center;gap:2px}
+.ytog.off{opacity:.45;text-decoration:line-through}
 .lexcol h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2)}
 .lexcol>div{display:flex;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border);align-items:baseline}
 .lex b{min-width:64px;color:var(--brand)}
@@ -283,6 +285,7 @@ const CONFIG = {
       <div class="card wide">
         <h2 id="tMonthlyTitle">Évolution mensuelle</h2>
         <p class="hint">Réalisations par mois, comparées aux deux années précédentes. Le pointillé signale le mois en cours, encore incomplet.</p>
+        <div class="legend" id="yrToggle" style="margin-bottom:8px"></div>
         <div class="chartbox tall"><canvas id="cMonthly"></canvas></div>
         <details><summary>Voir les données</summary><div id="tMonthly" style="overflow-x:auto;margin-top:8px"></div></details>
       </div>
@@ -470,7 +473,7 @@ const LIST_LABELS = {type_demandeur:"Types de demandeurs",demandeur:"Personnes",
 const MONTHS = ["Janv","Févr","Mars","Avr","Mai","Juin","Juil","Août","Sept","Oct","Nov","Déc"];
 const MONTHS_FULL = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 const DAYS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-const NA = "Non attribué", NOCAT = "Sans catégorie";
+const NA = "Non renseigné", NOCAT = "Sans catégorie";
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const SERIES = ["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"].map(css);
 const BRAND = css("--brand"), BRAND_SOFT = "#c5d3d0", GREY = "#b4bdba";
@@ -489,7 +492,9 @@ const dayName = s => DAYS[(parseIso(s).getDay()+6)%7];
 function isoWeek(d){ const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=t.getUTCDay()||7;
   t.setUTCDate(t.getUTCDate()+4-day); const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1)); return Math.ceil(((t-y0)/86400000+1)/7); }
 const norm = s => String(s??"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim();
-const NOW = new Date(), NOWY = NOW.getFullYear(), NOWM = NOW.getMonth();
+let NOW, NOWY, NOWM;
+function tick(){ NOW=new Date(); NOWY=NOW.getFullYear(); NOWM=NOW.getMonth(); }
+tick();
 
 const DEMO = !CONFIG.SUPABASE_URL && !!DEMO_DATA;
 const STORE = "parfexlabo3_";
@@ -524,7 +529,7 @@ const api = DEMO ? {
   async replaceAll(t,rows){ let r=await sb.from(t).delete().gte("id",0); if(r.error) throw r.error; await this.insert(t,rows); }
 };
 
-const S = {role:null, saisies:[], historique:[], listes:[], charts:{}, mode:"new", week:null, dirty:false, editBase:null, preview:null, curDate:null};
+const S = {autoYear:true, autoPer:true, autoR:true, hideYears:new Set(), role:null, saisies:[], historique:[], listes:[], charts:{}, mode:"new", week:null, dirty:false, editBase:null, preview:null, curDate:null};
 const lists = (type,groupe) => S.listes.filter(l=>l.type===type&&(!groupe||l.groupe===groupe)).map(l=>l.valeur).sort((a,b)=>a.localeCompare(b,"fr"));
 const byId = type => S.listes.filter(l=>l.type===type).sort((a,b)=>a.id-b.id);
 const typeOrder = () => byId("type_demandeur").map(l=>l.valeur);
@@ -610,13 +615,13 @@ function renderDash(){
     if(a1!=null&&b1){ const p=(a1-b1)/b1*100;
       k2.innerHTML=`<span class="chip ${p>=0?"up":"down"}" style="font-size:22px;padding:2px 12px">${p>=0?"▲ +":"▼ "}${p.toFixed(1).replace(".",",")} %</span>`;
       k2s.textContent=`1er janv. → ${todayLabel()} : ${fmt(a1)} en ${y}, ${fmt(b1)} en ${y-1}`; }
-    else { k2.textContent="–"; k2s.textContent=`Pas de données détaillées en ${y-1} pour comparer à date`; }
+    else { k2.textContent="–"; k2s.textContent=a1==null?`Aucune donnée saisie en ${y} pour le moment`:`Pas de données détaillées en ${y-1} pour comparer à date`; }
   } else {
   const both=[...Array(n).keys()].filter(i=>cur[i]!=null&&prev[i]!=null);
   if(both.length){ const a=both.reduce((s,i)=>s+cur[i],0), b=both.reduce((s,i)=>s+prev[i],0), p=b?(a-b)/b*100:0;
     k2.innerHTML=`<span class="chip ${p>=0?"up":"down"}" style="font-size:22px;padding:2px 12px">${p>=0?"▲ +":"▼ "}${p.toFixed(1).replace(".",",")} %</span>`;
     k2s.textContent=`${MONTHS[both[0]].toLowerCase()}. → fin ${MONTHS_FULL[both[both.length-1]]} : ${fmt(a)} en ${y}, ${fmt(b)} en ${y-1}`;
-  } else { k2.textContent="–"; k2s.textContent=n?"Pas de mois comparables":"Aucun mois terminé"; }
+  } else { k2.textContent="–"; k2s.textContent=!filled?`Aucune donnée saisie en ${y} pour le moment`:n?"Pas de mois comparables":"Aucun mois terminé"; }
   }
 
   const doneCur=[...Array(n).keys()].filter(i=>cur[i]!=null);
@@ -636,7 +641,10 @@ function renderDash(){
   const ds=[[y,cur,BRAND,3],[y-1,prev,SERIES[1],2],[y-2,prev2,GREY,2]].filter(d=>d[1].some(v=>v!=null))
     .map(([lab,data,c,w])=>({label:String(lab),data,borderColor:c,backgroundColor:c,borderWidth:w,pointRadius:3.5,pointHoverRadius:6,
       pointBorderColor:"#fff",pointBorderWidth:2,tension:.25,spanGaps:false,segment:{borderDash:c2=>(+lab===NOWY&&c2.p1DataIndex===NOWM)?[5,4]:undefined}}));
-  mk("cMonthly",{type:"line",data:{labels:MONTHS,datasets:ds},options:baseOpts()});
+  const yrs=[[y,BRAND],[y-1,SERIES[1]],[y-2,GREY]].filter(([a])=>monthly(a,f).some(v=>v!=null));
+  yrToggle.innerHTML=`<span style="color:var(--muted)">Années affichées :</span>`+yrs.map(([a,c])=>`<button class="ytog ${S.hideYears.has(a)?"off":""}" data-yt="${a}"><i style="background:${c}"></i>${a}</button>`).join("");
+  yrToggle.querySelectorAll("[data-yt]").forEach(b=>b.onclick=()=>{ const a=+b.dataset.yt; if(S.hideYears.has(a)) S.hideYears.delete(a); else if(yrs.filter(([x])=>!S.hideYears.has(x)).length>1) S.hideYears.add(a); renderDash(); });
+  mk("cMonthly",{type:"line",data:{labels:MONTHS,datasets:ds.filter(d=>!S.hideYears.has(+d.label))},options:baseOpts({plugins:{legend:{display:false},tooltip}})});
   tMonthly.innerHTML=`<table class="list"><tr><th>Année</th>${MONTHS.map(m=>`<th class="num">${m}</th>`).join("")}<th class="num">Total</th></tr>`+
     [[y,cur],[y-1,prev],[y-2,prev2]].map(([lab,d])=>`<tr><td>${lab}</td>${d.map(v=>`<td class="num">${fmt(v)}</td>`).join("")}<td class="num"><b>${fmt(d.reduce((a,v)=>a+(v||0),0))}</b></td></tr>`).join("")+`</table>`;
 
@@ -699,19 +707,21 @@ function renderRhythm(){
       if(v==null) return `<td class="na">·</td>`;
       const t=v/max, bg=`rgba(42,66,65,${(0.06+t*0.9).toFixed(3)})`, col=t>0.5?"#fff":"var(--text)";
       return `<td class="${a===NOWY&&i===NOWM?"cur":""}" style="background:${bg};color:${col}" title="${MONTHS_FULL[i]} ${a} : ${fmt(v)}">${fmt(v)}</td>`; }).join("")}<td class="t">${fmt(vals.reduce((s,v)=>s+(v||0),0))}</td></tr>`).join("");
-  heat.querySelectorAll("[data-y]").forEach(td=>td.onclick=()=>{ fYear.value=td.dataset.y; fPer.value=td.dataset.y; fillCmp(); renderDash(); window.scrollTo({top:0,behavior:"smooth"}); });
+  heat.querySelectorAll("[data-y]").forEach(td=>td.onclick=()=>{ fYear.value=td.dataset.y; fPer.value=td.dataset.y; S.autoYear=S.autoPer=+td.dataset.y===NOWY; fillCmp(); renderDash(); window.scrollTo({top:0,behavior:"smooth"}); });
 
   const sy=saisiesFor(f).filter(s=>s._y===y), wk=new Map();
-  sy.forEach(s=>{ const w=isoWeek(parseIso(s.date)); wk.set(w,(wk.get(w)||0)+s.quantite); });
-  const curW=y===NOWY?isoWeek(NOW):99, weeks=[...Array(53).keys()].map(i=>i+1).filter(w=>w<=Math.max(...wk.keys(),y===NOWY?curW:52));
-  const vals=weeks.map(w=>wk.has(w)?wk.get(w):null), past=weeks.filter(w=>wk.has(w)&&w<curW).map(w=>wk.get(w));
-  const avg=past.length?past.reduce((a,b)=>a+b,0)/past.length:null;
+  sy.forEach(s=>{ const m=mondayOf(s.date); wk.set(m,(wk.get(m)||0)+s.quantite); });
+  const curM=mondayOf(iso(NOW)), endY=y===NOWY?curM:`${y}-12-31`;
+  const mons=[]; for(let m=mondayOf(`${y}-01-01`);m<=endY;m=addDays(m,7)) mons.push(m);
+  [...wk.keys()].forEach(m=>{ if(!mons.includes(m)) mons.push(m); }); mons.sort();
+  const lab=m=>`S${isoWeek(parseIso(m))}`, vals=mons.map(m=>wk.has(m)?wk.get(m):null), pastM=mons.filter(m=>wk.has(m)&&m<curM), past=pastM.map(m=>wk.get(m));
+  const avg=past.length?past.reduce((a,b)=>a+b,0)/past.length:null, rec=past.length?pastM[past.indexOf(Math.max(...past))]:null;
   tWeekly.textContent=`Charge hebdomadaire ${y}`;
-  hWeekly.textContent=past.length?`Réalisations par semaine. Moyenne de ${fmt(avg)} par semaine terminée, record de ${fmt(Math.max(...past))} en semaine ${weeks.find(w=>wk.get(w)===Math.max(...past)&&w<curW)}.`:"Aucune donnée détaillée par semaine pour cette année.";
-  mk("cWeekly",{type:"bar",data:{labels:weeks.map(w=>"S"+w),datasets:[
-    {type:"line",label:"Moyenne",data:weeks.map(()=>avg),borderColor:SERIES[1],borderWidth:2,borderDash:[6,4],pointRadius:0,order:0},
-    {label:"Réalisations",data:vals,backgroundColor:weeks.map(w=>w===curW?BRAND_SOFT:BRAND),borderRadius:3,barPercentage:.8,order:1}]},
-    options:baseOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{title:it=>{ const w=weeks[it[0].dataIndex]; return `Semaine ${w}${w===curW?" (en cours)":""}`; },label:tipNum}}},
+  hWeekly.textContent=past.length?`Réalisations par semaine en ${y}. Moyenne de ${fmt(avg)} par semaine terminée, record de ${fmt(Math.max(...past))} en semaine ${isoWeek(parseIso(rec))} (du ${frDate(rec)}).`:"Aucune donnée détaillée par semaine pour cette année.";
+  mk("cWeekly",{type:"bar",data:{labels:mons.map(lab),datasets:[
+    {type:"line",label:"Moyenne",data:mons.map(()=>avg),borderColor:SERIES[1],borderWidth:2,borderDash:[6,4],pointRadius:0,order:0},
+    {label:"Réalisations",data:vals,backgroundColor:mons.map(m=>m===curM?BRAND_SOFT:BRAND),borderRadius:3,barPercentage:.8,order:1}]},
+    options:baseOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{title:it=>{ const m=mons[it[0].dataIndex]; return `Semaine ${isoWeek(parseIso(m))} · du ${frDate(m)} au ${frDate(addDays(m,4))}${m===curM?" (en cours)":""}`; },label:tipNum}}},
       scales:{x:{...axisX,ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:18}},y:axisY}})});
 
   tCat.textContent=`Catégories par mois · ${y}`;
@@ -741,18 +751,18 @@ function fillFilters(){
   const keep={y:fYear.value,c:fCat.value,a:fAct.value,t:fType.value,p:fPer.value,m:fCmp.value};
   const ys=years();
   fYear.innerHTML=ys.slice().reverse().map(y=>`<option>${y}</option>`).join("");
-  fYear.value=keep.y||String(NOWY);
+  fYear.value=S.autoYear||!keep.y?String(NOWY):keep.y;
   const opt=(arr,all="Toutes",lab=x=>x)=>`<option value="">${all}</option>`+arr.map(v=>`<option value="${esc(v)}">${esc(lab(v))}</option>`).join("");
   fCat.innerHTML=opt(catOrder(),"Toutes",catName); fAct.innerHTML=opt(actOrder()); fType.innerHTML=opt(reqOrder(),"Tous");
   fCat.value=keep.c||""; fAct.value=keep.a||""; fType.value=keep.t||"";
   fPer.innerHTML=`<option value="all">Toutes les années</option>`+ys.slice().reverse().map(y=>`<option value="${y}">${y}${y===NOWY?" (en cours)":""}</option>`).join("");
-  fPer.value=keep.p||String(NOWY);
+  fPer.value=S.autoPer||!keep.p?String(NOWY):keep.p;
   fillCmp(keep.m);
 }
 
 function fillCmp(keep){ const isCur=+fYear.value===NOWY; lCmp.classList.toggle("hidden",!isCur);
   const k=keep||fCmp.value||"mois", n=doneMonths(NOWY);
-  fCmp.innerHTML=`<option value="mois">${n?`Fin ${MONTHS_FULL[n-1]} (dernier mois terminé)`:"Mois terminés"}</option><option value="date">Aujourd'hui, ${todayLabel()}</option>`; fCmp.value=k; }
+  fCmp.innerHTML=(n?`<option value="mois">Fin ${MONTHS_FULL[n-1]} (dernier mois terminé)</option>`:"")+`<option value="date">Aujourd'hui, ${todayLabel()}</option>`; fCmp.value=n?k:"date"; }
 function gridCols(){
   const cats=gridCats(), cols=[];
   byId("activite").forEach(a=>{ if(a.groupe==="categories"&&cats.length) cats.forEach((c,i)=>cols.push({act:a.valeur,cat:c.valeur,first:i===0}));
@@ -951,8 +961,8 @@ function pivotData(g,y){
   const cols=gridCols(); let groups;
   if(g==="annee") groups=years().map(a=>({label:String(a),rows:S.saisies.filter(s=>s._y===a),nod:S.saisies.some(s=>s._y===a)?null:annual(a,{})}));
   else if(g==="mois") groups=MONTHS.map((m,i)=>({label:`${MONTHS_FULL[i]} ${y}`,rows:S.saisies.filter(s=>s._y===y&&s._m===i+1),nod:S.detail.has(y*100+i+1)?null:(S.historique.find(r=>r.annee===y&&r.mois===i+1&&r.categorie==="TOTAL")||{}).valeur??null}));
-  else { const wk=new Map(); S.saisies.filter(s=>s._y===y).forEach(s=>{ const w=isoWeek(parseIso(s.date)); if(!wk.has(w)) wk.set(w,[]); wk.get(w).push(s); });
-    groups=[...wk.keys()].sort((a,b)=>a-b).map(w=>({label:`Semaine ${w}`,rows:wk.get(w),nod:null})); }
+  else { const wk=new Map(); S.saisies.filter(s=>s._y===y).forEach(s=>{ const m=mondayOf(s.date); if(!wk.has(m)) wk.set(m,[]); wk.get(m).push(s); });
+    groups=[...wk.keys()].sort().map(m=>({label:`Semaine ${isoWeek(parseIso(m))} · ${ddmm(m<`${y}-01-01`?`${y}-01-01`:m)}`,rows:wk.get(m),nod:null})); }
   groups=groups.filter(gp=>gp.rows.length||gp.nod!=null);
   const match=(s,c)=>(s.activite||"")===c.act&&(s.categorie||"")===(c.cat??"");
   const data=groups.map(gp=>{ const cells=cols.map(c=>gp.rows.filter(s=>match(s,c)).reduce((a,s)=>a+s.quantite,0)), other=gp.rows.filter(s=>!cols.some(c=>match(s,c))).reduce((a,s)=>a+s.quantite,0);
@@ -989,6 +999,73 @@ async function exportXlsx(){
       hs.push([+a,c==="TOTAL"?"Total":c,...[...Array(12).keys()].map(i=>(S.historique.find(h=>h.annee===+a&&h.categorie===c&&h.mois===i+1)||{}).valeur??null),(S.historique.find(h=>h.annee===+a&&h.categorie===c&&h.mois==null)||{}).valeur??null]); });
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hs),"Totaux sans détail"); }
   XLSX.writeFile(wb,`activite_laboratoire_${y}.xlsx`);
+}
+function loadScript(src){ return new Promise((ok,ko)=>{ const s=document.createElement("script"); s.src=src; s.onload=ok; s.onerror=()=>ko(new Error("Export PDF indisponible : bibliothèque non chargée")); document.head.appendChild(s); }); }
+async function loadPdf(){ if(!window.jspdf) await loadScript("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+  if(!window.jspdf.jsPDF.API.autoTable) await loadScript("https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js");
+  if(!window.html2canvas) await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"); }
+const pdfTxt = v => String(v??"").replace(/[\u202f\u00a0]/g," ").replace(/→/g,"-").replace(/▲/g,"+").replace(/▼/g,"");
+function pdfDoc(title,sub){
+  const doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  const head=()=>{ try{ doc.addImage(LOGO,"PNG",10,7,26,9); }catch(e){}
+    doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(42,66,65); doc.text(pdfTxt(title),42,12);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(110,120,117); doc.text(pdfTxt(sub),42,16.5);
+    doc.setDrawColor(226,230,228); doc.line(10,20,287,20); };
+  head(); return {doc,head};
+}
+function pdfFooter(doc){ const n=doc.getNumberOfPages(); for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFontSize(7.5); doc.setTextColor(140,150,147);
+  doc.text(pdfTxt(`Parfex · Laboratoire d'application · édité le ${NOW.toLocaleDateString("fr-FR")}`),10,204); doc.text(`${i} / ${n}`,287,204,{align:"right"}); } }
+async function exportDashPdf(btn){
+  const label=btn.textContent; btn.disabled=true; btn.textContent="Création du PDF…";
+  try{ await loadPdf(); show("dash");
+    const f=filt(), parts=[`Année ${f.y}`]; if(f.cat) parts.push(`Catégorie ${catName(f.cat)}`); if(f.act) parts.push(`Activité ${f.act}`); if(f.typ) parts.push(`Demandeur ${f.typ}`);
+    const {doc,head}=pdfDoc("Activité du laboratoire d'application · Tableau de bord",parts.join(" · "));
+    const vis=e=>e&&e.offsetParent!==null, rows=[[document.querySelector("#tab-dash .kpis")]]; let pend=null;
+    document.querySelectorAll("#tab-dash .grid > .card").forEach(el=>{ if(!vis(el)) return;
+      if(el.classList.contains("wide")){ if(pend){ rows.push([pend]); pend=null; } rows.push([el]); }
+      else if(pend){ rows.push([pend,el]); pend=null; } else pend=el; });
+    if(pend) rows.push([pend]);
+    const W=277, top=24, bottom=198, gap=6, maxH=(bottom-top-gap)/2; let yPos=top;
+    for(const row of rows){
+      const cvs=[];
+      for(const el of row){ const det=el.querySelector("details"); if(det) det.style.display="none";
+        cvs.push(await window.html2canvas(el,{scale:2,backgroundColor:"#ffffff",logging:false})); if(det) det.style.display=""; }
+      const slotW=(W-gap*(cvs.length-1))/cvs.length;
+      let h=Math.min(maxH,...cvs.map(c=>c.height*slotW/c.width));
+      const ws=cvs.map(c=>Math.min(slotW,c.width*h/c.height));
+      if(yPos+h>bottom){ doc.addPage(); head(); yPos=top; }
+      let x=10+(W-(ws.reduce((a,b)=>a+b,0)+gap*(cvs.length-1)))/2;
+      cvs.forEach((c,i)=>{ const hh=c.height*ws[i]/c.width; doc.addImage(c.toDataURL("image/jpeg",0.92),"JPEG",x,yPos,ws[i],hh); x+=ws[i]+gap; });
+      yPos+=h+gap;
+    }
+    pdfFooter(doc); doc.save(`tableau_de_bord_${iso(NOW)}.pdf`);
+  }catch(e){ alert(e.message); }
+  btn.disabled=false; btn.textContent=label;
+}
+async function exportRecapPdf(btn){
+  const label=btn.textContent; btn.disabled=true; btn.textContent="Création du PDF…";
+  try{ await loadPdf();
+    const g=rGroup.value, y=+rYear.value, {cols,data,hasOther}=pivotData(g,y), n=v=>v?pdfTxt(fmt(v)):"";
+    const {doc,head}=pdfDoc("Activité du laboratoire d'application · Tableau récapitulatif",g==="annee"?"Par année":`${g==="mois"?"Par mois":"Par semaine"} · ${y}`);
+    const acts=[]; cols.forEach(c=>{ const l=acts[acts.length-1]; if(l&&l.a===c.act) l.n++; else acts.push({a:c.act,n:1}); });
+    const h1=[{content:g==="annee"?"Année":g==="mois"?"Mois":"Semaine",rowSpan:2},...acts.map(a=>({content:a.a,colSpan:a.n})),...(hasOther?[{content:"Autres",rowSpan:2}]:[]),{content:"Total",rowSpan:2}];
+    const h2=cols.map(c=>c.cat||"");
+    const body=data.map(d=>d.nodOnly?[pdfTxt(d.label),{content:"Total connu sans détail",colSpan:cols.length+(hasOther?1:0),styles:{fontStyle:"italic",halign:"center",textColor:[110,120,117]}},n(d.total)]
+      :[pdfTxt(d.label),...d.cells.map(n),...(hasOther?[n(d.other)]:[]),n(d.total)]);
+    const colT=cols.map((c,i)=>data.reduce((a,d)=>a+(d.nodOnly?0:d.cells[i]),0));
+    const foot=[["Total",...colT.map(n),...(hasOther?[n(data.reduce((a,d)=>a+d.other,0))]:[]),n(data.reduce((a,d)=>a+d.total,0))]];
+    doc.autoTable({startY:24,head:[h1,h2],body,foot,theme:"grid",margin:{left:10,right:10,top:24},
+      styles:{fontSize:7,cellPadding:1.4,halign:"right",lineColor:[226,230,228],lineWidth:.1,textColor:[24,33,31]},
+      headStyles:{fillColor:[42,66,65],textColor:255,halign:"center",fontStyle:"bold"},
+      footStyles:{fillColor:[223,232,230],textColor:[42,66,65],fontStyle:"bold"},
+      columnStyles:{0:{halign:"left",fontStyle:"bold",cellWidth:30}},
+      didDrawPage:()=>head()});
+    let yy=doc.lastAutoTable.finalY+6;
+    const lex=gridCats().filter(c=>c.libelle).map(c=>`${c.valeur} : ${c.libelle}`);
+    if(lex.length){ doc.setFontSize(7.5); doc.setTextColor(85,98,95); doc.text(pdfTxt(lex.join("   ·   ")),10,Math.min(yy,196)); }
+    pdfFooter(doc); doc.save(`recapitulatif_${g}${g==="annee"?"":"_"+y}.pdf`);
+  }catch(e){ alert(e.message); }
+  btn.disabled=false; btn.textContent=label;
 }
 function printWith(cls){
   printDate.textContent=`Édité le ${NOW.toLocaleDateString("fr-FR")}`;
@@ -1157,11 +1234,17 @@ function show(tab){
   ["dash","saisie","histo","param"].forEach(t=>$("tab-"+t).classList.toggle("hidden",t!==tab));
   if(tab==="dash") renderDash();
 }
-function fillRYear(){ const k=rYear.value; rYear.innerHTML=years().slice().reverse().map(y=>`<option>${y}</option>`).join(""); rYear.value=k||String(NOWY); }
+function fillRYear(){ const k=rYear.value; rYear.innerHTML=years().slice().reverse().map(y=>`<option>${y}</option>`).join(""); rYear.value=S.autoR||!k?String(NOWY):k; }
 async function refresh(){
   await loadAll(); fillFilters(); fillRYear(); renderDash(); renderWeek(); renderPivot(); renderHistTable(); renderRaw(); if(S.role==="tech") renderParams();
   fillTech();
   if(!S.dirty){ if(S.mode==="edit") loadEdit(); else renderBlocks([bid(sDate.value,"jour")],[],false); }
+}
+function watchDay(){
+  const check=async()=>{ const d=iso(new Date()); if(d===iso(NOW)) return; const wasToday=sDate.value===iso(NOW), wasWeek=S.week===mondayOf(iso(NOW));
+    tick(); if(wasWeek) S.week=mondayOf(d); if(wasToday&&!S.dirty){ sDate.value=d; S.curDate=d; showWeek(); }
+    await refresh(); };
+  setInterval(check,60000); document.addEventListener("visibilitychange",()=>{ if(!document.hidden) check(); });
 }
 const IDLE_MIN = 30;
 function watchIdle(){
@@ -1177,13 +1260,13 @@ async function start(role){
   logout.classList.toggle("hidden",DEMO);
   document.querySelectorAll("[data-role=tech]").forEach(b=>b.classList.toggle("hidden",role!=="tech"));
   sDate.value=iso(NOW); S.curDate=sDate.value;
-  await loadAll(); setMode("new"); await refresh(); show("dash"); watchIdle();
+  await loadAll(); setMode("new"); await refresh(); show("dash"); watchIdle(); watchDay();
 }
 
 document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
 [fCat,fAct,fType,fCmp].forEach(s=>s.onchange=renderDash);
-fYear.onchange=()=>{ if(fPer.value!=="all") fPer.value=fYear.value; fillCmp(); renderDash(); };
-fPer.onchange=renderBreakdown;
+fYear.onchange=()=>{ S.autoYear=+fYear.value===NOWY; if(fPer.value!=="all"){ fPer.value=fYear.value; S.autoPer=S.autoYear; } fillCmp(); renderDash(); };
+fPer.onchange=()=>{ S.autoPer=fPer.value===String(NOWY); renderBreakdown(); };
 document.querySelectorAll("#modeSeg button").forEach(b=>b.onclick=()=>{ if(b.dataset.m!==S.mode) setMode(b.dataset.m); });
 ePer.onchange=()=>{ if(S.dirty&&!confirm("Des modifications ne sont pas enregistrées. Continuer ?")){ ePer.value=S.lastPer||"jour"; return; } S.lastPer=ePer.value; S.dirty=false; setMode("edit"); };
 eFmt.onchange=()=>{ if(S.dirty&&!confirm("Des modifications ne sont pas enregistrées. Continuer ?")){ eFmt.value=S.lastFmt||"jour"; return; } S.lastFmt=eFmt.value; S.dirty=false; loadEdit(); };
@@ -1197,10 +1280,10 @@ wPrev.onclick=()=>{ S.week=addDays(S.week,-7); renderWeek(); };
 wNext.onclick=()=>{ S.week=addDays(S.week,7); renderWeek(); };
 wToday.onclick=()=>{ S.week=mondayOf(iso(NOW)); renderWeek(); };
 $("wEdit").onclick=()=>openEdit("semaine","jour",S.week);
-rGroup.onchange=renderPivot; rYear.onchange=renderPivot;
+rGroup.onchange=renderPivot; rYear.onchange=()=>{ S.autoR=rYear.value===String(NOWY); renderPivot(); };
 $("exportXlsx").onclick=()=>exportXlsx().catch(e=>alert(e.message));
-$("printRecap").onclick=()=>printWith("recap");
-$("printDash").onclick=()=>{ show("dash"); printWith("dash"); };
+$("printRecap").onclick=e=>exportRecapPdf(e.currentTarget);
+$("printDash").onclick=e=>exportDashPdf(e.currentTarget);
 hMonth.onchange=renderRaw; hOrig.onchange=renderRaw;
 $("exportCsv").onclick=exportCsv;
 $("dlTemplate").onclick=()=>downloadTemplate().catch(e=>alert(e.message));
