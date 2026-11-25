@@ -171,6 +171,23 @@ table.sg td.zero{color:#c3cbc8}
 .scale{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text2);margin-top:8px}
 .scale i{display:inline-block;width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,#f0f4f3,#2a4241)}
 .lex{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:6px 36px;font-size:13px}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff}
+  header,#demoBanner,.noprint,nav,details,.filters .note,#tab-saisie,#tab-param{display:none!important}
+  .card{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
+  .sect{break-after:avoid;page-break-after:avoid}
+  main{padding:0;max-width:none}
+  .grid{display:block}.grid>.card{margin-bottom:10px}
+  .chartbox{height:240px}.chartbox.tall{height:260px}
+  body.print-recap main>*:not(#tab-histo),body.print-recap #tab-histo>*:not(#recapCard){display:none!important}
+  body.print-recap #recapCard .grid-wrap{max-height:none;overflow:visible}
+  body.print-recap table.piv{font-size:9px}
+  .printhead{display:flex!important}
+}
+.printhead{display:none;align-items:center;gap:14px;margin-bottom:10px}
+.printhead img{height:26px}
+.printhead span{color:var(--text2);font-size:12px}
 .lexcol h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2)}
 .lexcol>div{display:flex;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border);align-items:baseline}
 .lex b{min-width:64px;color:var(--brand)}
@@ -241,6 +258,7 @@ const CONFIG = {
 </header>
 
 <main id="app" class="hidden">
+  <div class="printhead"><img class="lg" alt="Parfex"><b>Activité du laboratoire d'application</b><span id="printDate"></span></div>
   <div id="demoBanner" class="banner hidden">Version de démonstration. Les données sont enregistrées dans ce navigateur uniquement.</div>
 
   <section id="tab-dash">
@@ -249,7 +267,10 @@ const CONFIG = {
       <label>Catégorie<select id="fCat"></select></label>
       <label>Activité<select id="fAct"></select></label>
       <label>Demandeur<select id="fType"></select></label>
+      <label id="lCmp">Comparer jusqu'à<select id="fCmp"></select></label>
       <span id="filterNote" class="note hidden"></span>
+      <span class="spacer"></span>
+      <button class="btn light noprint" id="printDash">Exporter en PDF</button>
     </div>
     <div class="kpis">
       <div class="card kpi"><div class="lbl" id="k1l"></div><div class="val" id="k1">–</div><div class="sub" id="k1s"></div></div>
@@ -292,15 +313,10 @@ const CONFIG = {
         <p class="hint">Répartition des catégories d'application demandées par chacun.</p>
         <div class="chartbox"><canvas id="cReqCat"></canvas><div class="empty hidden" id="eReqCat">Aucune donnée pour cette période.</div></div>
       </div>
-      <div class="card">
-        <h2 id="tCatRank">Catégories d'application les plus demandées</h2>
-        <p class="hint" id="hCatRank"></p>
-        <div class="chartbox"><canvas id="cCatRank"></canvas><div class="empty hidden" id="eCatRank">Aucune donnée pour cette période.</div></div>
-      </div>
-      <div class="card">
-        <h2 id="tActRank">Activités les plus demandées</h2>
-        <p class="hint" id="hActRank"></p>
-        <div class="chartbox"><canvas id="cActRank"></canvas><div class="empty hidden" id="eActRank">Aucune donnée pour cette période.</div></div>
+      <div class="card wide">
+        <h2>Évolution de la part de chaque catégorie</h2>
+        <p class="hint">Pour chaque année, part de chaque catégorie d'application dans le total. Permet de voir si le mix évolue.</p>
+        <div class="chartbox tall"><canvas id="cMix"></canvas></div>
       </div>
     </div>
 
@@ -321,6 +337,11 @@ const CONFIG = {
         <h2 id="tCat">Catégories par mois</h2>
         <p class="hint">Réalisations par mois et par catégorie d'application.</p>
         <div class="chartbox"><canvas id="cCat"></canvas><div class="empty hidden" id="eCat">Aucune donnée par catégorie pour cette année.</div></div>
+      </div>
+      <div class="card wide">
+        <h2>Tendance de fond sur 12 mois glissants</h2>
+        <p class="hint">Chaque point additionne les 12 derniers mois. La saisonnalité est gommée, la courbe montre si l'activité progresse ou recule dans la durée.</p>
+        <div class="chartbox"><canvas id="cRoll"></canvas></div>
       </div>
       <div class="card wide">
         <h2>Lexique</h2>
@@ -376,13 +397,14 @@ const CONFIG = {
       <div class="grid-wrap"><table class="sg" id="weekTable"></table></div>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card" style="margin-top:16px" id="recapCard">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <div><h2>Tableau récapitulatif</h2><p class="hint" style="margin-bottom:0">Totaux par période, activité et catégorie. Plus la case est foncée, plus le volume est élevé.</p></div>
         <div class="ctl">
           <label>Regrouper par<select id="rGroup"><option value="mois">Mois</option><option value="semaine">Semaine</option><option value="annee">Année</option></select></label>
           <label id="lrYear">Année<select id="rYear"></select></label>
-          <button class="btn light" id="exportPivot">Exporter</button>
+          <button class="btn light noprint" id="exportXlsx">Exporter en Excel</button>
+          <button class="btn light noprint" id="printRecap">Exporter en PDF</button>
         </div>
       </div>
       <div class="grid-wrap" style="max-height:620px;overflow:auto"><table class="piv" id="pivot"></table></div>
@@ -543,6 +565,10 @@ function annual(year,f){
   const m=monthly(year,f).filter(v=>v!=null); return m.length?m.reduce((a,b)=>a+b,0):null;
 }
 const doneMonths = y => y<NOWY?12:y===NOWY?NOWM:0;
+const todayLabel = () => NOW.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
+function cumToDate(a,f){ const md=iso(NOW).slice(5), lim=`${a}-${md}`;
+  if(!S.saisies.some(s=>s._y===a)) return null;
+  return saisiesFor(f).filter(s=>s._y===a&&s.date<=lim).reduce((x,s)=>x+s.quantite,0); }
 function years(){ const y=new Set([...S.historique.map(r=>r.annee),...S.saisies.map(s=>s._y)]); y.add(NOWY); return [...y].sort((a,b)=>a-b); }
 function sumBy(rows,keyFn){ const m=new Map(); rows.forEach(r=>{ const k=keyFn(r); m.set(k,(m.get(k)||0)+r.quantite); }); return m; }
 const sumRange = (arr,n) => arr.slice(0,n).reduce((a,v)=>a+(v||0),0);
@@ -578,20 +604,28 @@ function renderDash(){
   k1l.textContent=`Réalisations ${y}`; k1.textContent=filled?fmt(total):"–";
   k1s.textContent=isCur?(cur[NOWM]!=null?`dont ${fmt(cur[NOWM])} en ${MONTHS_FULL[NOWM]}, mois en cours`:`à fin ${MONTHS_FULL[Math.max(n-1,0)]}`):`${filled} mois renseigné${filled>1?"s":""}`;
 
-  const both=[...Array(n).keys()].filter(i=>cur[i]!=null&&prev[i]!=null);
+  const atDate=isCur&&fCmp.value==="date";
   k2l.textContent=`Évolution à période égale`;
+  if(atDate){ const a1=cumToDate(y,f), b1=cumToDate(y-1,f);
+    if(a1!=null&&b1){ const p=(a1-b1)/b1*100;
+      k2.innerHTML=`<span class="chip ${p>=0?"up":"down"}" style="font-size:22px;padding:2px 12px">${p>=0?"▲ +":"▼ "}${p.toFixed(1).replace(".",",")} %</span>`;
+      k2s.textContent=`1er janv. → ${todayLabel()} : ${fmt(a1)} en ${y}, ${fmt(b1)} en ${y-1}`; }
+    else { k2.textContent="–"; k2s.textContent=`Pas de données détaillées en ${y-1} pour comparer à date`; }
+  } else {
+  const both=[...Array(n).keys()].filter(i=>cur[i]!=null&&prev[i]!=null);
   if(both.length){ const a=both.reduce((s,i)=>s+cur[i],0), b=both.reduce((s,i)=>s+prev[i],0), p=b?(a-b)/b*100:0;
     k2.innerHTML=`<span class="chip ${p>=0?"up":"down"}" style="font-size:22px;padding:2px 12px">${p>=0?"▲ +":"▼ "}${p.toFixed(1).replace(".",",")} %</span>`;
-    k2s.textContent=`${MONTHS[both[0]].toLowerCase()}. → ${MONTHS_FULL[both[both.length-1]]} : ${fmt(a)} en ${y}, ${fmt(b)} en ${y-1}`;
+    k2s.textContent=`${MONTHS[both[0]].toLowerCase()}. → fin ${MONTHS_FULL[both[both.length-1]]} : ${fmt(a)} en ${y}, ${fmt(b)} en ${y-1}`;
   } else { k2.textContent="–"; k2s.textContent=n?"Pas de mois comparables":"Aucun mois terminé"; }
+  }
 
   const doneCur=[...Array(n).keys()].filter(i=>cur[i]!=null);
-  k3l.textContent=`Moyenne par mois terminé`;
+  k3l.textContent=`Moyenne mensuelle ${y}`;
   if(doneCur.length){ const avg=doneCur.reduce((s,i)=>s+cur[i],0)/doneCur.length; k3.textContent=fmt(avg);
     const pv=doneCur.filter(i=>prev[i]!=null);
     if(pv.length){ const avp=pv.reduce((s,i)=>s+prev[i],0)/pv.length, d=avp?(avg-avp)/avp*100:0;
-      k3s.innerHTML=`${fmt(avp)} en ${y-1} sur les mêmes mois <span class="chip ${d>=0?"up":"down"}">${d>=0?"+":""}${d.toFixed(0)} %</span>`; }
-    else k3s.textContent=`sur ${doneCur.length} mois`; }
+      k3s.innerHTML=`${MONTHS[doneCur[0]].toLowerCase()}. → ${MONTHS_FULL[doneCur[doneCur.length-1]]} ${y} · ${fmt(avp)} sur les mêmes mois en ${y-1} <span class="chip ${d>=0?"up":"down"}">${d>=0?"+":""}${d.toFixed(0)} %</span>`; }
+    else k3s.textContent=`${MONTHS[doneCur[0]].toLowerCase()}. → ${MONTHS_FULL[doneCur[doneCur.length-1]]} ${y}`; }
   else { k3.textContent="–"; k3s.textContent=""; }
 
   k4l.textContent=`Mois le plus chargé en ${y}`;
@@ -607,14 +641,19 @@ function renderDash(){
     [[y,cur],[y-1,prev],[y-2,prev2]].map(([lab,d])=>`<tr><td>${lab}</td>${d.map(v=>`<td class="num">${fmt(v)}</td>`).join("")}<td class="num"><b>${fmt(d.reduce((a,v)=>a+(v||0),0))}</b></td></tr>`).join("")+`</table>`;
 
   const ys=years().filter(a=>a<=y);
-  const nn=n||12, full=nn===12;
-  tSameTitle.textContent=full?`Total annuel, année après année`:`Cumul de janvier à ${MONTHS_FULL[nn-1]}, année après année`;
-  tSameHint.textContent=full?"Comparaison des années complètes.":`Pour comparer ${y} aux années précédentes sans être faussé par les mois pas encore écoulés, chaque barre additionne les mêmes mois.`;
-  const same=ys.map(a=>[a,sumRange(monthly(a,f),nn)]).filter(e=>e[1]>0);
-  mk("cSame",{type:"bar",data:{labels:same.map(e=>String(e[0])),datasets:[{label:full?"Total":`Janv. → ${MONTHS[nn-1].toLowerCase()}.`,data:same.map(e=>e[1]),backgroundColor:same.map(e=>e[0]===y?BRAND:BRAND_SOFT),borderRadius:6,barPercentage:.62}]},
+  let same, title, hint, lab;
+  if(atDate){ title=`Cumul du 1er janvier au ${todayLabel()}, année après année`;
+    hint=`Chaque barre additionne les réalisations du 1er janvier au ${todayLabel()} de l'année. Les années connues seulement en totaux mensuels sont absentes de cette vue. Les anciennes données étant par semaine, la semaine en cours est comptée entière.`;
+    same=ys.map(a=>[a,cumToDate(a,f)]).filter(e=>e[1]); lab="À date"; }
+  else { const nn=n||12, full=nn===12;
+    title=full?`Total annuel, année après année`:`Cumul de janvier à fin ${MONTHS_FULL[nn-1]}, année après année`;
+    hint=full?"Comparaison des années complètes.":`Dernier mois terminé : ${MONTHS_FULL[nn-1]}. Chaque barre additionne les mêmes mois, pour comparer ${y} aux années précédentes sans être faussé par les mois pas encore écoulés. La période avance automatiquement chaque mois.`;
+    same=ys.map(a=>[a,sumRange(monthly(a,f),nn)]).filter(e=>e[1]>0); lab=full?"Total":`Janv. → ${MONTHS[nn-1].toLowerCase()}.`; }
+  tSameTitle.textContent=title; tSameHint.textContent=hint;
+  mk("cSame",{type:"bar",data:{labels:same.map(e=>String(e[0])),datasets:[{label:lab,data:same.map(e=>e[1]),backgroundColor:same.map(e=>e[0]===y?BRAND:BRAND_SOFT),borderRadius:6,barPercentage:.62}]},
     options:baseOpts({plugins:{legend:{display:false},tooltip},interaction:{mode:"nearest",intersect:false,axis:"x"}})});
 
-  renderBreakdown(); renderRhythm(); renderLexique();
+  renderBreakdown(); renderRhythm(); renderRoll(); renderLexique();
 }
 
 function renderBreakdown(){
@@ -630,27 +669,26 @@ function renderBreakdown(){
   const tot=sp.reduce((a,s)=>a+s.quantite,0), byReq=sumBy(sp,reqOf);
   const rq=reqs.map(t=>[t,byReq.get(t)||0]).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
   tReqShare.textContent=`Part de chaque demandeur · ${pl}`; hReqShare.textContent=tot?`${fmt(tot)} réalisations au total.`:"";
-  if(toggleEmpty("cReqShare","eReqShare",rq.length>0)) mk("cReqShare",{type:"bar",data:{labels:rq.map(e=>e[0]),datasets:[{data:rq.map(e=>e[1]),backgroundColor:rq.map(e=>reqColor(e[0])),borderRadius:5,barThickness:22}]},
+  const naActs=[...new Set(sp.filter(s=>reqOf(s)===NA).map(s=>s.activite||"non renseignée"))];
+  const rqLab=t=>t===NA&&naActs.length?[NA,`(${naActs.join(", ")})`]:t;
+  if(toggleEmpty("cReqShare","eReqShare",rq.length>0)) mk("cReqShare",{type:"bar",data:{labels:rq.map(e=>rqLab(e[0])),datasets:[{data:rq.map(e=>e[1]),backgroundColor:rq.map(e=>reqColor(e[0])),borderRadius:5,barThickness:22}]},
     options:hOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{label:c=>` ${fmt(c.parsed.x)} réalisations · ${pct(c.parsed.x,tot)} %`}}}})});
 
   const cats=catOrder().concat(sp.some(s=>!s.categorie)?[NOCAT]:[]);
   const rq2=rq.map(e=>e[0]);
   tReqCat.textContent=`Types d'applications par demandeur · ${pl}`;
   const dsC=cats.map(c=>({label:catName(c),data:rq2.map(t=>sp.filter(s=>reqOf(s)===t&&(s.categorie||NOCAT)===c).reduce((a,s)=>a+s.quantite,0)),backgroundColor:catColor(c),borderColor:"#fff",borderWidth:{right:2},borderRadius:3,borderSkipped:false,barThickness:22})).filter(d=>d.data.some(v=>v));
-  if(toggleEmpty("cReqCat","eReqCat",dsC.length>0)) mk("cReqCat",{type:"bar",data:{labels:rq2,datasets:dsC},
+  if(toggleEmpty("cReqCat","eReqCat",dsC.length>0)) mk("cReqCat",{type:"bar",data:{labels:rq2.map(rqLab),datasets:dsC},
     options:hOpts({plugins:{legend:{display:true,position:"bottom",labels:{boxWidth:10,boxHeight:10,useBorderRadius:true,borderRadius:3,padding:12}},
       tooltip:{...tooltip,mode:"nearest",callbacks:{label:c=>{ const t=c.chart.data.datasets.reduce((a,d)=>a+(d.data[c.dataIndex]||0),0); return ` ${c.dataset.label} : ${fmt(c.parsed.x)} (${pct(c.parsed.x,t)} %)`; }}}},
       scales:{x:{...axisY,stacked:true},y:{stacked:true,grid:{display:false},border:{color:"#d6dcda"}}}})});
 
-  const byCat=sumBy(sp,s=>s.categorie||NOCAT), cr=[...byCat.entries()].sort((a,b)=>b[1]-a[1]);
-  tCatRank.textContent=`Catégories d'application les plus demandées · ${pl}`; hCatRank.textContent=tot?`Part du total entre parenthèses au survol.`:"";
-  if(toggleEmpty("cCatRank","eCatRank",cr.length>0)) mk("cCatRank",{type:"bar",data:{labels:cr.map(e=>catName(e[0])),datasets:[{data:cr.map(e=>e[1]),backgroundColor:cr.map(e=>catColor(e[0])),borderRadius:5,barThickness:18}]},
-    options:hOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{label:c=>` ${fmt(c.parsed.x)} réalisations (${pct(c.parsed.x,tot)} %)`}}}})});
-
-  const byAct=sumBy(sp,s=>s.activite||"Non renseignée"), ar=[...byAct.entries()].sort((a,b)=>b[1]-a[1]);
-  tActRank.textContent=`Activités les plus demandées · ${pl}`; hActRank.textContent=tot?"Couleur du demandeur rattaché à l'activité.":"";
-  if(toggleEmpty("cActRank","eActRank",ar.length>0)) mk("cActRank",{type:"bar",data:{labels:ar.map(e=>e[0]),datasets:[{data:ar.map(e=>e[1]),backgroundColor:ar.map(e=>reqColor(actReq(e[0])||NA)),borderRadius:5,barThickness:18}]},
-    options:hOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{label:c=>` ${fmt(c.parsed.x)} réalisations (${pct(c.parsed.x,tot)} %)`,afterLabel:c=>` Demandeur : ${actReq(ar[c.dataIndex][0])||NA}`}}}})});
+  const cy=ys.filter(a=>sf.some(s=>s._y===a)), catsAll=catOrder().concat(sf.some(s=>!s.categorie)?[NOCAT]:[]);
+  const totY=cy.map(a=>sf.filter(s=>s._y===a).reduce((x,s)=>x+s.quantite,0));
+  const dsM=catsAll.map(c=>({label:catName(c),data:cy.map((a,i)=>totY[i]?sf.filter(s=>s._y===a&&(s.categorie||NOCAT)===c).reduce((x,s)=>x+s.quantite,0)/totY[i]*100:0),backgroundColor:catColor(c),borderColor:"#fff",borderWidth:{top:2},borderSkipped:false,barPercentage:.75})).filter(d=>d.data.some(v=>v));
+  mk("cMix",{type:"bar",data:{labels:cy.map(a=>a===NOWY?[String(a),"en cours"]:String(a)),datasets:dsM},
+    options:baseOpts({scales:{x:{...axisX,stacked:true},y:{...axisY,stacked:true,max:100,ticks:{callback:v=>v+" %"}}},
+      plugins:{legend:{position:"bottom",labels:{boxWidth:10,boxHeight:10,useBorderRadius:true,borderRadius:3,padding:14}},tooltip:{...tooltip,callbacks:{label:c=>` ${c.dataset.label} : ${c.parsed.y.toFixed(1).replace(".",",")} %`}}}})});
 }
 
 function renderRhythm(){
@@ -661,7 +699,7 @@ function renderRhythm(){
       if(v==null) return `<td class="na">·</td>`;
       const t=v/max, bg=`rgba(42,66,65,${(0.06+t*0.9).toFixed(3)})`, col=t>0.5?"#fff":"var(--text)";
       return `<td class="${a===NOWY&&i===NOWM?"cur":""}" style="background:${bg};color:${col}" title="${MONTHS_FULL[i]} ${a} : ${fmt(v)}">${fmt(v)}</td>`; }).join("")}<td class="t">${fmt(vals.reduce((s,v)=>s+(v||0),0))}</td></tr>`).join("");
-  heat.querySelectorAll("[data-y]").forEach(td=>td.onclick=()=>{ fYear.value=td.dataset.y; renderDash(); });
+  heat.querySelectorAll("[data-y]").forEach(td=>td.onclick=()=>{ fYear.value=td.dataset.y; fPer.value=td.dataset.y; fillCmp(); renderDash(); window.scrollTo({top:0,behavior:"smooth"}); });
 
   const sy=saisiesFor(f).filter(s=>s._y===y), wk=new Map();
   sy.forEach(s=>{ const w=isoWeek(parseIso(s.date)); wk.set(w,(wk.get(w)||0)+s.quantite); });
@@ -684,6 +722,15 @@ function renderRhythm(){
     options:baseOpts({scales:{x:{...axisX,stacked:true},y:{...axisY,stacked:true}}})});
 }
 
+function renderRoll(){
+  const f=filt(), ys=years(), pts=[], labs=[];
+  const series=ys.flatMap(a=>monthly(a,f).map((v,i)=>({a,i,v})));
+  for(let k=11;k<series.length;k++){ const win=series.slice(k-11,k+1); const p=series[k];
+    if(p.a===NOWY&&p.i>=NOWM) break;
+    labs.push(`${MONTHS[p.i]} ${p.a}`); pts.push(win.every(x=>x.v!=null)?win.reduce((t,x)=>t+x.v,0):null); }
+  mk("cRoll",{type:"line",data:{labels:labs,datasets:[{label:"12 mois glissants",data:pts,borderColor:BRAND,backgroundColor:"rgba(42,66,65,.08)",fill:true,borderWidth:2,pointRadius:0,pointHoverRadius:5,tension:.2,spanGaps:false}]},
+    options:baseOpts({plugins:{legend:{display:false},tooltip:{...tooltip,callbacks:{title:it=>`12 mois jusqu'à fin ${it[0].label}`,label:tipNum}}},scales:{x:{...axisX,ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},y:{...axisY,beginAtZero:false}}})});
+}
 function renderLexique(){
   const cats=gridCats().map(c=>`<div><b>${esc(c.valeur)}</b>${c.libelle?esc(c.libelle):'<span class="todo">Nom complet à renseigner dans Paramètres</span>'}${c.groupe?` <span class="mini">· groupe ${esc(c.groupe)}</span>`:""}</div>`).join("");
   const acts=byId("activite").map(a=>`<div><b style="min-width:160px">${esc(a.valeur)}</b>${a.type_demandeur?`Demandeur : ${esc(a.type_demandeur)}`:'<span class="todo">Demandeur à préciser dans Paramètres</span>'}</div>`).join("");
@@ -691,7 +738,7 @@ function renderLexique(){
 }
 
 function fillFilters(){
-  const keep={y:fYear.value,c:fCat.value,a:fAct.value,t:fType.value,p:fPer.value};
+  const keep={y:fYear.value,c:fCat.value,a:fAct.value,t:fType.value,p:fPer.value,m:fCmp.value};
   const ys=years();
   fYear.innerHTML=ys.slice().reverse().map(y=>`<option>${y}</option>`).join("");
   fYear.value=keep.y||String(NOWY);
@@ -700,8 +747,12 @@ function fillFilters(){
   fCat.value=keep.c||""; fAct.value=keep.a||""; fType.value=keep.t||"";
   fPer.innerHTML=`<option value="all">Toutes les années</option>`+ys.slice().reverse().map(y=>`<option value="${y}">${y}${y===NOWY?" (en cours)":""}</option>`).join("");
   fPer.value=keep.p||String(NOWY);
+  fillCmp(keep.m);
 }
 
+function fillCmp(keep){ const isCur=+fYear.value===NOWY; lCmp.classList.toggle("hidden",!isCur);
+  const k=keep||fCmp.value||"mois", n=doneMonths(NOWY);
+  fCmp.innerHTML=`<option value="mois">${n?`Fin ${MONTHS_FULL[n-1]} (dernier mois terminé)`:"Mois terminés"}</option><option value="date">Aujourd'hui, ${todayLabel()}</option>`; fCmp.value=k; }
 function gridCols(){
   const cats=gridCats(), cols=[];
   byId("activite").forEach(a=>{ if(a.groupe==="categories"&&cats.length) cats.forEach((c,i)=>cols.push({act:a.valeur,cat:c.valeur,first:i===0}));
@@ -896,30 +947,56 @@ function openEdit(per,fm,date){
   S.dirty=false; show("saisie"); ePer.value=per; eFmt.value=fm; sDate.value=date; S.curDate=date; setMode("edit");
 }
 
-function renderPivot(){
-  const g=rGroup.value, y=+rYear.value, cols=gridCols();
-  lrYear.classList.toggle("hidden",g==="annee");
-  let groups;
-  if(g==="annee") groups=years().map(a=>({k:String(a),label:String(a),rows:S.saisies.filter(s=>s._y===a),nod:S.saisies.some(s=>s._y===a)?null:annual(a,{})}));
-  else if(g==="mois") groups=MONTHS.map((m,i)=>({k:i,label:`${MONTHS_FULL[i]} ${y}`,rows:S.saisies.filter(s=>s._y===y&&s._m===i+1),nod:S.detail.has(y*100+i+1)?null:(S.historique.find(r=>r.annee===y&&r.mois===i+1&&r.categorie==="TOTAL")||{}).valeur??null}));
+function pivotData(g,y){
+  const cols=gridCols(); let groups;
+  if(g==="annee") groups=years().map(a=>({label:String(a),rows:S.saisies.filter(s=>s._y===a),nod:S.saisies.some(s=>s._y===a)?null:annual(a,{})}));
+  else if(g==="mois") groups=MONTHS.map((m,i)=>({label:`${MONTHS_FULL[i]} ${y}`,rows:S.saisies.filter(s=>s._y===y&&s._m===i+1),nod:S.detail.has(y*100+i+1)?null:(S.historique.find(r=>r.annee===y&&r.mois===i+1&&r.categorie==="TOTAL")||{}).valeur??null}));
   else { const wk=new Map(); S.saisies.filter(s=>s._y===y).forEach(s=>{ const w=isoWeek(parseIso(s.date)); if(!wk.has(w)) wk.set(w,[]); wk.get(w).push(s); });
-    groups=[...wk.keys()].sort((a,b)=>a-b).map(w=>({k:w,label:`Semaine ${w}`,rows:wk.get(w),nod:null})); }
+    groups=[...wk.keys()].sort((a,b)=>a-b).map(w=>({label:`Semaine ${w}`,rows:wk.get(w),nod:null})); }
   groups=groups.filter(gp=>gp.rows.length||gp.nod!=null);
-  const cellsOf=gp=>cols.map(c=>gp.rows.filter(s=>(s.activite||"")===c.act&&(s.categorie||"")===(c.cat??"")).reduce((a,s)=>a+s.quantite,0));
-  const data=groups.map(gp=>({gp,cells:cellsOf(gp),other:gp.rows.filter(s=>!cols.some(c=>(s.activite||"")===c.act&&(s.categorie||"")===(c.cat??""))).reduce((a,s)=>a+s.quantite,0)}));
-  const max=Math.max(1,...data.flatMap(d=>d.cells)), hasOther=data.some(d=>d.other);
+  const match=(s,c)=>(s.activite||"")===c.act&&(s.categorie||"")===(c.cat??"");
+  const data=groups.map(gp=>{ const cells=cols.map(c=>gp.rows.filter(s=>match(s,c)).reduce((a,s)=>a+s.quantite,0)), other=gp.rows.filter(s=>!cols.some(c=>match(s,c))).reduce((a,s)=>a+s.quantite,0);
+    const nodOnly=!gp.rows.length&&gp.nod!=null; return {label:gp.label,cells,other,nodOnly,total:nodOnly?gp.nod:cells.reduce((a,v)=>a+v,0)+other}; });
+  return {cols,data,hasOther:data.some(d=>d.other)};
+}
+function renderPivot(){
+  const g=rGroup.value, y=+rYear.value; lrYear.classList.toggle("hidden",g==="annee");
+  const {cols,data,hasOther}=pivotData(g,y);
+  const max=Math.max(1,...data.flatMap(d=>d.cells));
   const shade=v=>{ if(!v) return ""; const t=v/max; return `background:rgba(42,66,65,${(0.04+t*0.55).toFixed(3)});${t>0.6?"color:#fff;":""}`; };
   const colT=cols.map(()=>0); let otherT=0, grand=0;
-  const body=data.map(d=>{
-    if(!d.gp.rows.length&&d.gp.nod!=null){ grand+=d.gp.nod; return `<tr class="nodet"><td>${esc(d.gp.label)}</td><td colspan="${cols.length+(hasOther?1:0)}" style="text-align:center">Total connu sans détail</td><td class="tot">${fmt(d.gp.nod)}</td></tr>`; }
-    const t=d.cells.reduce((a,v)=>a+v,0)+d.other; grand+=t; otherT+=d.other; d.cells.forEach((v,i)=>colT[i]+=v);
-    return `<tr><td>${esc(d.gp.label)}</td>${d.cells.map((v,i)=>`<td class="${cols[i].first?"act-start":""} ${v?"":"zero"}" style="${shade(v)}">${v?fmt(v):"·"}</td>`).join("")}${hasOther?`<td>${d.other?fmt(d.other):"·"}</td>`:""}<td class="tot">${fmt(t)}</td></tr>`; }).join("");
+  const body=data.map(d=>{ grand+=d.total;
+    if(d.nodOnly) return `<tr class="nodet"><td>${esc(d.label)}</td><td colspan="${cols.length+(hasOther?1:0)}" style="text-align:center">Total connu sans détail</td><td class="tot">${fmt(d.total)}</td></tr>`;
+    otherT+=d.other; d.cells.forEach((v,i)=>colT[i]+=v);
+    return `<tr><td>${esc(d.label)}</td>${d.cells.map((v,i)=>`<td class="${cols[i].first?"act-start":""} ${v?"":"zero"}" style="${shade(v)}">${v?fmt(v):"·"}</td>`).join("")}${hasOther?`<td>${d.other?fmt(d.other):"·"}</td>`:""}<td class="tot">${fmt(d.total)}</td></tr>`; }).join("");
   const head=gridHeader(g==="annee"?"Année":g==="mois"?"Mois":"Semaine",false).replace(/<th rowspan="(\d)">Total<\/th>/,(m,h)=>(hasOther?`<th rowspan="${h}">Autres</th>`:"")+m);
   pivot.innerHTML=data.length?`<thead>${head}</thead><tbody>${body}</tbody><tfoot><tr><td>Total</td>${colT.map((v,i)=>`<td class="${cols[i].first?"act-start":""}">${fmt(v)}</td>`).join("")}${hasOther?`<td>${fmt(otherT)}</td>`:""}<td>${fmt(grand)}</td></tr></tfoot>`
     :`<tbody><tr><td style="padding:14px">Aucune donnée pour cette période.</td></tr></tbody>`;
-  S.pivotCsv=()=>{ const h=["Période",...cols.map(c=>c.cat?`${c.act} ${c.cat}`:c.act),...(hasOther?["Autres"]:[]),"Total"];
-    return [h,...data.map(d=>!d.gp.rows.length&&d.gp.nod!=null?[d.gp.label,...cols.map(()=>""),...(hasOther?[""]:[]),d.gp.nod]:[d.gp.label,...d.cells,...(hasOther?[d.other]:[]),d.cells.reduce((a,v)=>a+v,0)+d.other])]; };
 }
+async function exportXlsx(){
+  await loadXlsx();
+  const wb=XLSX.utils.book_new(), y=+rYear.value;
+  const sheet=(g,name)=>{ const {cols,data,hasOther}=pivotData(g,y);
+    const h1=[g==="annee"?"Année":g==="mois"?"Mois":"Semaine",...cols.map(c=>c.act),...(hasOther?["Autres"]:[]),"Total"];
+    const h2=["",...cols.map(c=>c.cat?catName(c.cat):""),...(hasOther?[""]:[]),""];
+    const rows=data.map(d=>[d.label,...(d.nodOnly?cols.map(()=>null):d.cells),...(hasOther?[d.nodOnly?null:d.other]:[]),d.total]);
+    const tot=["Total",...cols.map((c,i)=>data.reduce((a,d)=>a+(d.nodOnly?0:d.cells[i]),0)),...(hasOther?[data.reduce((a,d)=>a+d.other,0)]:[]),data.reduce((a,d)=>a+d.total,0)];
+    const ws=XLSX.utils.aoa_to_sheet([h1,h2,...rows,tot]); ws["!cols"]=[{wch:18},...h1.slice(1).map(()=>({wch:12}))]; ws["!freeze"]={xSplit:1,ySplit:2};
+    XLSX.utils.book_append_sheet(wb,ws,name); };
+  sheet("annee","Par année"); sheet("mois",`Par mois ${y}`); sheet("semaine",`Par semaine ${y}`);
+  if(S.historique.length){ const hs=[["Année","Catégorie",...MONTHS,"Année entière"]];
+    [...new Set(S.historique.map(h=>h.annee+"|"+h.categorie))].forEach(k=>{ const [a,c]=k.split("|");
+      hs.push([+a,c==="TOTAL"?"Total":c,...[...Array(12).keys()].map(i=>(S.historique.find(h=>h.annee===+a&&h.categorie===c&&h.mois===i+1)||{}).valeur??null),(S.historique.find(h=>h.annee===+a&&h.categorie===c&&h.mois==null)||{}).valeur??null]); });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hs),"Totaux sans détail"); }
+  XLSX.writeFile(wb,`activite_laboratoire_${y}.xlsx`);
+}
+function printWith(cls){
+  printDate.textContent=`Édité le ${NOW.toLocaleDateString("fr-FR")}`;
+  document.body.classList.toggle("print-recap",cls==="recap");
+  Object.values(S.charts).forEach(c=>c.options.animation=false);
+  setTimeout(()=>{ window.print(); document.body.classList.remove("print-recap"); },150);
+}
+
 function renderHistTable(){
   const ys=[...new Set(S.historique.map(h=>h.annee))].sort((a,b)=>b-a);
   histHint.innerHTML=ys.length?`Totaux connus sans répartition par activité ni catégorie. Une case barrée n'est pas comptée : des données détaillées existent pour cette période et sont utilisées à la place, pour ne pas compter deux fois.`:"Aucun total sans détail.";
@@ -1086,6 +1163,12 @@ async function refresh(){
   fillTech();
   if(!S.dirty){ if(S.mode==="edit") loadEdit(); else renderBlocks([bid(sDate.value,"jour")],[],false); }
 }
+const IDLE_MIN = 30;
+function watchIdle(){
+  if(DEMO) return; let last=Date.now();
+  ["click","keydown","mousemove","scroll","touchstart"].forEach(e=>window.addEventListener(e,()=>{ last=Date.now(); },{passive:true}));
+  setInterval(async()=>{ if(Date.now()-last>IDLE_MIN*60000){ if(S.dirty) return; await sb.auth.signOut(); location.reload(); } },30000);
+}
 async function start(role){
   S.role=role; S.week=mondayOf(iso(NOW));
   login.classList.add("hidden"); topbar.classList.remove("hidden"); app.classList.remove("hidden");
@@ -1094,11 +1177,12 @@ async function start(role){
   logout.classList.toggle("hidden",DEMO);
   document.querySelectorAll("[data-role=tech]").forEach(b=>b.classList.toggle("hidden",role!=="tech"));
   sDate.value=iso(NOW); S.curDate=sDate.value;
-  await loadAll(); setMode("new"); await refresh(); show("dash");
+  await loadAll(); setMode("new"); await refresh(); show("dash"); watchIdle();
 }
 
 document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>show(b.dataset.tab));
-[fYear,fCat,fAct,fType].forEach(s=>s.onchange=renderDash);
+[fCat,fAct,fType,fCmp].forEach(s=>s.onchange=renderDash);
+fYear.onchange=()=>{ if(fPer.value!=="all") fPer.value=fYear.value; fillCmp(); renderDash(); };
 fPer.onchange=renderBreakdown;
 document.querySelectorAll("#modeSeg button").forEach(b=>b.onclick=()=>{ if(b.dataset.m!==S.mode) setMode(b.dataset.m); });
 ePer.onchange=()=>{ if(S.dirty&&!confirm("Des modifications ne sont pas enregistrées. Continuer ?")){ ePer.value=S.lastPer||"jour"; return; } S.lastPer=ePer.value; S.dirty=false; setMode("edit"); };
@@ -1114,7 +1198,9 @@ wNext.onclick=()=>{ S.week=addDays(S.week,7); renderWeek(); };
 wToday.onclick=()=>{ S.week=mondayOf(iso(NOW)); renderWeek(); };
 $("wEdit").onclick=()=>openEdit("semaine","jour",S.week);
 rGroup.onchange=renderPivot; rYear.onchange=renderPivot;
-$("exportPivot").onclick=()=>download(`recapitulatif_${rGroup.value}${rGroup.value==="annee"?"":"_"+rYear.value}.csv`,S.pivotCsv());
+$("exportXlsx").onclick=()=>exportXlsx().catch(e=>alert(e.message));
+$("printRecap").onclick=()=>printWith("recap");
+$("printDash").onclick=()=>{ show("dash"); printWith("dash"); };
 hMonth.onchange=renderRaw; hOrig.onchange=renderRaw;
 $("exportCsv").onclick=exportCsv;
 $("dlTemplate").onclick=()=>downloadTemplate().catch(e=>alert(e.message));
@@ -1139,7 +1225,7 @@ logout.onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
 (async()=>{
   if(DEMO){ start("tech"); return; }
   if(!CONFIG.SUPABASE_URL||!CONFIG.SUPABASE_KEY){ fatal.classList.remove("hidden"); return; }
-  sb=supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_KEY);
+  sb=supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_KEY,{auth:{storage:window.sessionStorage,persistSession:true,autoRefreshToken:true}});
   const {data}=await sb.auth.getSession();
   const role=roleOf(data.session);
   if(role) start(role); else login.classList.remove("hidden");
